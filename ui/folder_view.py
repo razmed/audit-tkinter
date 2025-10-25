@@ -168,11 +168,14 @@ class FolderView(tk.Frame):
         )
         count_label.pack()
         
-        # Événement de clic
-        def on_click(event):
-            # Émettre un événement personnalisé pour naviguer vers ce dossier
-            self.event_generate('<<FolderOpen>>', data=folder['id'])
+        # Événement de clic - CORRECTION ICI
+        def on_click(event=None):
+            # Stocker l'ID dans un attribut temporaire
+            self._folder_id = folder['id']
+            # Générer l'événement personnalisé
+            self.event_generate('<<FolderOpen>>')
         
+        # Lier tous les widgets au clic
         card.bind('<Button-1>', on_click)
         icon_label.bind('<Button-1>', on_click)
         name_label.bind('<Button-1>', on_click)
@@ -193,6 +196,12 @@ class FolderView(tk.Frame):
         
         card.bind('<Enter>', on_enter)
         card.bind('<Leave>', on_leave)
+        icon_label.bind('<Enter>', on_enter)
+        icon_label.bind('<Leave>', on_leave)
+        name_label.bind('<Enter>', on_enter)
+        name_label.bind('<Leave>', on_leave)
+        count_label.bind('<Enter>', on_enter)
+        count_label.bind('<Leave>', on_leave)
         
         return card
     
