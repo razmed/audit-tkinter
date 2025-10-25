@@ -1,10 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinterdnd2 import DND_FILES, TkinterDnD
 from typing import Callable, Optional
 import os
 
 class AdminWindow:
-    """Fenêtre d'administration"""
+    """Fenêtre d'administration avec Drag & Drop"""
     
     def __init__(self, root: tk.Toplevel, db, file_handler, on_changes: Callable):
         self.root = root
@@ -60,6 +61,52 @@ class AdminWindow:
             command=self.root.destroy
         )
         close_button.pack(side=tk.RIGHT, padx=20)
+        
+        # ZONE DRAG & DROP - NOUVELLE SECTION
+        dragdrop_frame = tk.Frame(self.root, bg='#e7f3ff', relief=tk.SOLID, bd=2)
+        dragdrop_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Titre de la zone
+        tk.Label(
+            dragdrop_frame,
+            text="📦 Zone Drag & Drop",
+            font=('Segoe UI', 12, 'bold'),
+            bg='#e7f3ff',
+            fg='#0066cc'
+        ).pack(pady=(10, 5))
+        
+        # Zone de drop
+        self.drop_zone = tk.Label(
+            dragdrop_frame,
+            text="⬇️ Glissez-déposez un dossier ici pour l'importer\n\n"
+                 "Tous les fichiers (.docx, .pdf, .xlsx, etc.) seront importés\n"
+                 "avec leur arborescence complète",
+            font=('Segoe UI', 10),
+            bg='#ffffff',
+            fg='#6c757d',
+            relief=tk.RIDGE,
+            bd=2,
+            height=5,
+            cursor='hand2'
+        )
+        self.drop_zone.pack(fill=tk.X, padx=20, pady=(5, 15))
+        
+        # Configuration du drag & drop
+        self.drop_zone.drop_target_register(DND_FILES)
+        self.drop_zone.dnd_bind('<<Drop>>', self.on_drop)
+        
+        # Effet hover sur la zone de drop
+        def on_enter(e):
+            self.drop_zone.config(bg='#f0f8ff', relief=tk.SOLID, bd=3)
+        
+        def on_leave(e):
+            self.drop_zone.config(bg='#ffffff', relief=tk.RIDGE, bd=2)
+        
+        self.drop_zone.bind('<Enter>', on_enter)
+        self.drop_zone.bind('<Leave>', on_leave)
+        
+        # Permettre aussi le clic pour sélectionner
+        self.drop_zone.bind('<Button-1>', lambda e: self.import_folder())
         
         # Barre d'outils
         toolbar = tk.Frame(self.root, bg='#f8f9fa', height=60)
@@ -161,6 +208,109 @@ class AdminWindow:
         
         # Bind clic droit
         self.tree.bind('<Button-3>', self.show_context_menu)
+    
+    def on_drop(self, event):
+        """Gérer le drop d'un dossier"""
+        # Récupérer le chemin (peut être entre accolades sur Windows)
+        path = event.data
+        
+        # Nettoyer le chemin
+        if path.startswith('{') and path.endswith('}'):
+            path = path[1:-1]
+        
+        path = path.strip()
+        
+        # Vérifier que c'est un dossier
+        if not os.path.isdir(path):
+            messagebox.showerror(
+                "Erreur",
+                "Veuillez déposer un dossier, pas un fichier.\n\n"
+                "Pour importer des fichiers individuels, utilisez le bouton 'Importer Fichiers'."
+            )
+            return
+        
+        # Demander confirmation
+        folder_name = os.path.basename(path)
+        response = messagebox.askyesno(
+            "Confirmation",
+            f"Voulez-vous importer le dossier :\n\n{folder_name}\n\n"
+            "Tous les fichiers et sous-dossiers seront importés.",
+            icon='question'
+        )
+        
+        if response:
+            self.import_folder_path(path)
+    
+    def import_folder_path(self, folder_path: str):
+        """Importer un dossier depuis un chemin donné"""
+        try:
+            # Afficher une fenêtre de progression
+            progress_window = tk.Toplevel(self.root)
+            progress_window.title("Importation en cours...")
+            progress_window.geometry("500x200")
+            progress_window.transient(self.root)
+            progress_window.grab_set()
+            
+            # Centrer
+            progress_window.update_idletasks()
+            x = (progress_window.winfo_screenwidth() // 2) - 250
+            y = (progress_window.winfo_screenheight() // 2) - 100
+            progress_window.geometry(f'500x200+{x}+{y}')
+            
+            tk.Label(
+                progress_window,
+                text="⏳ Importation en cours...",
+                font=('Segoe UI', 14, 'bold'),
+                fg='#007bff'
+            ).pack(pady=20)
+            
+            progress_label = tk.Label(
+                progress_window,
+                text="Analyse du dossier et importation des fichiers...\nCela peut prendre quelques instants.",
+                font=('Segoe UI', 10),
+                fg='#6c757d',
+                justify=tk.CENTER
+            )
+            progress_label.pack(pady=10)
+            
+            # Message d'info
+            info_label = tk.Label(
+                progress_window,
+                text="✓ Tous les fichiers (.docx, .pdf, .xlsx, etc.) seront importés\n✓ L'arborescence des dossiers sera conservée",
+                font=('Segoe UI', 9),
+                fg='#28a745',
+                justify=tk.LEFT
+            )
+            info_label.pack(pady=10)
+            
+            progress_window.update()
+            
+            # Importer les fichiers
+            print("\n" + "="*60)
+            print("DÉBUT DE L'IMPORTATION")
+            print("="*60)
+            count = self.file_handler.save_files_from_folder(folder_path, self.db, None)
+            print("="*60)
+            print(f"FIN DE L'IMPORTATION: {count} fichier(s)")
+            print("="*60 + "\n")
+            
+            progress_window.destroy()
+            
+            messagebox.showinfo(
+                "Succès",
+                f"✅ {count} fichier(s) importé(s) avec succès !\n\n"
+                f"Le dossier '{os.path.basename(folder_path)}' et tous ses fichiers ont été ajoutés."
+            )
+            
+            self.load_folders()
+            self.on_changes()
+            
+        except Exception as e:
+            if 'progress_window' in locals():
+                progress_window.destroy()
+            messagebox.showerror("Erreur", f"Impossible d'importer le dossier:\n\n{e}")
+            import traceback
+            traceback.print_exc()
     
     def show_context_menu(self, event):
         """Afficher le menu contextuel"""
@@ -484,74 +634,7 @@ class AdminWindow:
         )
         
         if response:
-            try:
-                # Afficher une fenêtre de progression
-                progress_window = tk.Toplevel(self.root)
-                progress_window.title("Importation en cours...")
-                progress_window.geometry("500x200")
-                progress_window.transient(self.root)
-                progress_window.grab_set()
-                
-                # Centrer
-                progress_window.update_idletasks()
-                x = (progress_window.winfo_screenwidth() // 2) - 250
-                y = (progress_window.winfo_screenheight() // 2) - 100
-                progress_window.geometry(f'500x200+{x}+{y}')
-                
-                tk.Label(
-                    progress_window,
-                    text="⏳ Importation en cours...",
-                    font=('Segoe UI', 14, 'bold'),
-                    fg='#007bff'
-                ).pack(pady=20)
-                
-                progress_label = tk.Label(
-                    progress_window,
-                    text="Analyse du dossier et importation des fichiers...\nCela peut prendre quelques instants.",
-                    font=('Segoe UI', 10),
-                    fg='#6c757d',
-                    justify=tk.CENTER
-                )
-                progress_label.pack(pady=10)
-                
-                # Message d'info
-                info_label = tk.Label(
-                    progress_window,
-                    text="✓ Tous les fichiers (.docx, .pdf, .xlsx, etc.) seront importés\n✓ L'arborescence des dossiers sera conservée",
-                    font=('Segoe UI', 9),
-                    fg='#28a745',
-                    justify=tk.LEFT
-                )
-                info_label.pack(pady=10)
-                
-                progress_window.update()
-                
-                # Importer les fichiers
-                print("\n" + "="*60)
-                print("DÉBUT DE L'IMPORTATION")
-                print("="*60)
-                count = self.file_handler.save_files_from_folder(folder_path, self.db, None)
-                print("="*60)
-                print(f"FIN DE L'IMPORTATION: {count} fichier(s)")
-                print("="*60 + "\n")
-                
-                progress_window.destroy()
-                
-                messagebox.showinfo(
-                    "Succès",
-                    f"✅ {count} fichier(s) importé(s) avec succès !\n\n"
-                    f"Le dossier '{os.path.basename(folder_path)}' et tous ses fichiers ont été ajoutés."
-                )
-                
-                self.load_folders()
-                self.on_changes()
-                
-            except Exception as e:
-                if 'progress_window' in locals():
-                    progress_window.destroy()
-                messagebox.showerror("Erreur", f"Impossible d'importer le dossier:\n\n{e}")
-                import traceback
-                traceback.print_exc()
+            self.import_folder_path(folder_path)
     
     def import_files(self):
         """Importer des fichiers dans un dossier"""
