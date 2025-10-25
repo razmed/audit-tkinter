@@ -104,7 +104,7 @@ class MainWindow:
         )
         home_button.pack(side=tk.LEFT, padx=5)
         
-        # Bouton admin (avec authentification)
+        # Bouton admin (avec authentification et déconnexion)
         self.admin_button = tk.Button(
             nav_buttons_frame,
             text="⚙️ Admin",
@@ -113,13 +113,43 @@ class MainWindow:
             fg='white',
             relief=tk.FLAT,
             cursor='hand2',
-            command=self.open_admin_with_auth
+            command=self.toggle_admin
         )
         self.admin_button.pack(side=tk.LEFT, padx=5)
         
         # Container pour le contenu
         self.content_frame = tk.Frame(self.root, bg='#f8f9fa')
         self.content_frame.pack(fill=tk.BOTH, expand=True)
+    
+    def toggle_admin(self):
+        """Basculer entre connexion et déconnexion admin"""
+        if self.is_admin_authenticated:
+            # Déjà connecté -> proposer de se déconnecter ou d'ouvrir le panel
+            menu = tk.Menu(self.root, tearoff=0)
+            menu.add_command(label="📊 Ouvrir Panel Admin", command=self.open_admin)
+            menu.add_separator()
+            menu.add_command(label="🚪 Se Déconnecter", command=self.logout_admin)
+            
+            # Afficher le menu à la position du bouton
+            x = self.admin_button.winfo_rootx()
+            y = self.admin_button.winfo_rooty() + self.admin_button.winfo_height()
+            menu.post(x, y)
+        else:
+            # Pas connecté -> ouvrir la fenêtre de connexion
+            self.open_admin_with_auth()
+    
+    def logout_admin(self):
+        """Déconnecter l'administrateur"""
+        response = messagebox.askyesno(
+            "Déconnexion",
+            "Voulez-vous vous déconnecter du mode administrateur ?",
+            icon='question'
+        )
+        
+        if response:
+            self.is_admin_authenticated = False
+            self.admin_button.config(text="⚙️ Admin", bg='#ff4d4d')
+            messagebox.showinfo("Déconnexion", "Vous êtes maintenant déconnecté")
     
     def load_folder(self, folder_id: Optional[int], clear_history: bool = False):
         """Charger le contenu d'un dossier"""
@@ -154,9 +184,7 @@ class MainWindow:
     
     def on_folder_open(self, event):
         """Gérer l'ouverture d'un dossier"""
-        # Récupérer l'ID du dossier depuis l'événement
-        # Note: tkinter ne supporte pas directement data dans event_generate
-        # On utilise une variable de classe temporaire
+        # Récupérer l'ID du dossier depuis l'attribut temporaire
         folder_id = getattr(event.widget, '_folder_id', None)
         if folder_id:
             self.load_folder(folder_id)
@@ -187,118 +215,115 @@ class MainWindow:
     
     def open_admin_with_auth(self):
         """Ouvrir le panneau admin avec authentification"""
-        if not self.is_admin_authenticated:
-            # Demander les identifiants
-            auth_dialog = tk.Toplevel(self.root)
-            auth_dialog.title("Authentification Administrateur")
-            auth_dialog.geometry("400x250")
-            auth_dialog.transient(self.root)
-            auth_dialog.grab_set()
-            auth_dialog.resizable(False, False)
+        # Demander les identifiants
+        auth_dialog = tk.Toplevel(self.root)
+        auth_dialog.title("Authentification Administrateur")
+        auth_dialog.geometry("400x250")
+        auth_dialog.transient(self.root)
+        auth_dialog.grab_set()
+        auth_dialog.resizable(False, False)
+        
+        # Centrer
+        auth_dialog.update_idletasks()
+        x = (auth_dialog.winfo_screenwidth() // 2) - 200
+        y = (auth_dialog.winfo_screenheight() // 2) - 125
+        auth_dialog.geometry(f'400x250+{x}+{y}')
+        
+        # Contenu
+        tk.Label(
+            auth_dialog,
+            text="🔒 Authentification Requise",
+            font=('Segoe UI', 14, 'bold'),
+            fg='#ff4d4d'
+        ).pack(pady=(20, 10))
+        
+        tk.Label(
+            auth_dialog,
+            text="Veuillez entrer vos identifiants administrateur",
+            font=('Segoe UI', 9),
+            fg='#6c757d'
+        ).pack(pady=(0, 20))
+        
+        # Username
+        tk.Label(
+            auth_dialog,
+            text="Nom d'utilisateur:",
+            font=('Segoe UI', 10)
+        ).pack(anchor=tk.W, padx=30)
+        
+        username_entry = tk.Entry(
+            auth_dialog,
+            font=('Segoe UI', 11),
+            relief=tk.SOLID,
+            bd=1
+        )
+        username_entry.pack(fill=tk.X, padx=30, pady=(5, 10))
+        username_entry.insert(0, "admin")
+        username_entry.focus()
+        
+        # Password
+        tk.Label(
+            auth_dialog,
+            text="Mot de passe:",
+            font=('Segoe UI', 10)
+        ).pack(anchor=tk.W, padx=30)
+        
+        password_entry = tk.Entry(
+            auth_dialog,
+            font=('Segoe UI', 11),
+            relief=tk.SOLID,
+            bd=1,
+            show='●'
+        )
+        password_entry.pack(fill=tk.X, padx=30, pady=(5, 15))
+        password_entry.insert(0, "admin")
+        
+        # Boutons
+        button_frame = tk.Frame(auth_dialog)
+        button_frame.pack(pady=10)
+        
+        def on_login():
+            username = username_entry.get().strip()
+            password = password_entry.get().strip()
             
-            # Centrer
-            auth_dialog.update_idletasks()
-            x = (auth_dialog.winfo_screenwidth() // 2) - 200
-            y = (auth_dialog.winfo_screenheight() // 2) - 125
-            auth_dialog.geometry(f'400x250+{x}+{y}')
-            
-            # Contenu
-            tk.Label(
-                auth_dialog,
-                text="🔒 Authentification Requise",
-                font=('Segoe UI', 14, 'bold'),
-                fg='#ff4d4d'
-            ).pack(pady=(20, 10))
-            
-            tk.Label(
-                auth_dialog,
-                text="Veuillez entrer vos identifiants administrateur",
-                font=('Segoe UI', 9),
-                fg='#6c757d'
-            ).pack(pady=(0, 20))
-            
-            # Username
-            tk.Label(
-                auth_dialog,
-                text="Nom d'utilisateur:",
-                font=('Segoe UI', 10)
-            ).pack(anchor=tk.W, padx=30)
-            
-            username_entry = tk.Entry(
-                auth_dialog,
-                font=('Segoe UI', 11),
-                relief=tk.SOLID,
-                bd=1
-            )
-            username_entry.pack(fill=tk.X, padx=30, pady=(5, 10))
-            username_entry.focus()
-            
-            # Password
-            tk.Label(
-                auth_dialog,
-                text="Mot de passe:",
-                font=('Segoe UI', 10)
-            ).pack(anchor=tk.W, padx=30)
-            
-            password_entry = tk.Entry(
-                auth_dialog,
-                font=('Segoe UI', 11),
-                relief=tk.SOLID,
-                bd=1,
-                show='●'
-            )
-            password_entry.pack(fill=tk.X, padx=30, pady=(5, 15))
-            
-            # Boutons
-            button_frame = tk.Frame(auth_dialog)
-            button_frame.pack(pady=10)
-            
-            def on_login():
-                username = username_entry.get().strip()
-                password = password_entry.get().strip()
-                
-                if self.db.authenticate_admin(username, password):
-                    self.is_admin_authenticated = True
-                    self.admin_button.config(text="⚙️ Admin ✓", bg='#28a745')
-                    auth_dialog.destroy()
-                    self.open_admin()
-                else:
-                    messagebox.showerror(
-                        "Erreur",
-                        "Identifiants incorrects",
-                        parent=auth_dialog
-                    )
-                    password_entry.delete(0, tk.END)
-                    username_entry.focus()
-            
-            tk.Button(
-                button_frame,
-                text="Se connecter",
-                font=('Segoe UI', 10, 'bold'),
-                bg='#ff4d4d',
-                fg='white',
-                relief=tk.FLAT,
-                cursor='hand2',
-                command=on_login
-            ).pack(side=tk.LEFT, padx=5)
-            
-            tk.Button(
-                button_frame,
-                text="Annuler",
-                font=('Segoe UI', 10),
-                bg='#6c757d',
-                fg='white',
-                relief=tk.FLAT,
-                cursor='hand2',
-                command=auth_dialog.destroy
-            ).pack(side=tk.LEFT, padx=5)
-            
-            # Enter pour valider
-            auth_dialog.bind('<Return>', lambda e: on_login())
-            
-        else:
-            # Déjà authentifié, ouvrir directement
-            self.open_admin()
+            if self.db.authenticate_admin(username, password):
+                self.is_admin_authenticated = True
+                self.admin_button.config(text="⚙️ Admin ✓", bg='#28a745')
+                auth_dialog.destroy()
+                self.open_admin()
+            else:
+                messagebox.showerror(
+                    "Erreur",
+                    "Identifiants incorrects",
+                    parent=auth_dialog
+                )
+                password_entry.delete(0, tk.END)
+                username_entry.focus()
+        
+        tk.Button(
+            button_frame,
+            text="Se connecter",
+            font=('Segoe UI', 10, 'bold'),
+            bg='#ff4d4d',
+            fg='white',
+            relief=tk.FLAT,
+            cursor='hand2',
+            command=on_login
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="Annuler",
+            font=('Segoe UI', 10),
+            bg='#6c757d',
+            fg='white',
+            relief=tk.FLAT,
+            cursor='hand2',
+            command=auth_dialog.destroy
+        ).pack(side=tk.LEFT, padx=5)
+        
+        # Enter pour valider
+        auth_dialog.bind('<Return>', lambda e: on_login())
     
     def open_admin(self):
         """Ouvrir le panneau d'administration"""
