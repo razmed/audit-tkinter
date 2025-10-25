@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 from pathlib import Path
 
 class FileHandler:
-    """Gestionnaire de fichiers"""
+    """Gestionnaire de fichiers avec import récursif corrigé"""
     
     def __init__(self, upload_dir: str = "uploads"):
         self.upload_dir = upload_dir
@@ -43,8 +43,12 @@ class FileHandler:
     
     def save_files_from_folder(self, folder_path: str, db, parent_folder_id: Optional[int] = None) -> int:
         """
-        Importer récursivement tous les fichiers d'un dossier
-        CORRECTION: Cette fonction importe maintenant TOUS les fichiers (.docx, .pdf, .xlsx, etc.)
+        ✅ CORRECTION MAJEURE: Importer récursivement TOUS les fichiers d'un dossier
+        
+        Cette fonction importe maintenant:
+        - TOUS les fichiers (.docx, .pdf, .xlsx, .txt, images, etc.)
+        - Toute l'arborescence de sous-dossiers
+        - Conserve la structure exacte du dossier source
         
         Args:
             folder_path: Chemin du dossier source à importer
@@ -57,36 +61,31 @@ class FileHandler:
         count = 0
         folder_name = os.path.basename(folder_path)
         
-        print(f"\n📂 Importation du dossier: {folder_name}")
-        print(f"   Chemin source: {folder_path}")
-        print(f"   Parent ID: {parent_folder_id}")
+        print(f"\n📂 IMPORTATION: {folder_name}")
+        print(f"   📍 Source: {folder_path}")
+        print(f"   🔗 Parent ID: {parent_folder_id}")
         
         # Créer le dossier dans la base de données
-        folder_id = db.create_folder(folder_name, parent_folder_id)
-        print(f"   ✅ Dossier créé dans la DB avec ID: {folder_id}")
+        try:
+            folder_id = db.create_folder(folder_name, parent_folder_id)
+            print(f"   ✅ Dossier DB créé (ID: {folder_id})")
+        except Exception as e:
+            print(f"   ❌ Erreur création dossier DB: {e}")
+            return 0
         
         try:
-            # Lister tous les éléments du dossier
+            # Lister TOUS les éléments du dossier
             items = os.listdir(folder_path)
             print(f"   📋 {len(items)} élément(s) trouvé(s)")
             
             for item in items:
                 item_path = os.path.join(folder_path, item)
                 
+                # CAS 1: C'est un FICHIER
                 if os.path.isfile(item_path):
-                    # C'est un fichier - L'IMPORTER
-                    print(f"      📄 Fichier détecté: {item}")
+                    print(f"      📄 Fichier: {item}")
                     
-                    # Vérifier l'extension
-                    extension = item.rsplit('.', 1)[-1].lower() if '.' in item else ''
-                    
-                    # Liste des extensions supportées (ajouter selon besoin)
-                    supported_extensions = [
-                        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-                        'txt', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'bmp',
-                        'zip', 'rar', '7z', 'mp3', 'mp4', 'avi', 'mov'
-                    ]
-                    
+                    # ✅ CORRECTION: On importe TOUS les fichiers, pas de filtre
                     # Copier le fichier dans uploads/
                     success, dest_path = self.save_file(item_path, item)
                     
@@ -95,34 +94,36 @@ class FileHandler:
                         try:
                             file_id = db.add_file(folder_id, item, dest_path)
                             count += 1
-                            print(f"         ✅ Fichier ajouté à la DB (ID: {file_id})")
+                            print(f"         ✅ Ajouté à la DB (ID: {file_id})")
                         except Exception as db_error:
-                            print(f"         ❌ Erreur DB pour {item}: {db_error}")
+                            print(f"         ❌ Erreur DB: {db_error}")
                     else:
-                        print(f"         ❌ Échec de la copie de {item}")
+                        print(f"         ❌ Échec de la copie")
                 
+                # CAS 2: C'est un SOUS-DOSSIER
                 elif os.path.isdir(item_path):
-                    # C'est un sous-dossier - APPEL RÉCURSIF
-                    print(f"      📁 Sous-dossier détecté: {item}")
+                    print(f"      📁 Sous-dossier: {item}")
+                    
+                    # ✅ APPEL RÉCURSIF pour traiter le sous-dossier
                     subfolder_count = self.save_files_from_folder(item_path, db, folder_id)
                     count += subfolder_count
-                    print(f"      ✅ {subfolder_count} fichier(s) importé(s) depuis {item}")
+                    print(f"      ✅ {subfolder_count} fichier(s) depuis '{item}'")
         
         except Exception as e:
-            print(f"❌ Erreur lors de l'importation du dossier {folder_path}: {e}")
+            print(f"   ❌ ERREUR lors de l'importation: {e}")
             import traceback
             traceback.print_exc()
         
-        print(f"📂 Fin importation de {folder_name}: {count} fichier(s) total\n")
+        print(f"📂 FIN '{folder_name}': {count} fichier(s) importé(s)\n")
         return count
     
     @staticmethod
     def sanitize_filename(filename: str) -> str:
-        """Nettoyer un nom de fichier"""
+        """Nettoyer un nom de fichier pour éviter les caractères problématiques"""
         import re
-        # Remplacer les caractères non autorisés
+        # Remplacer les caractères non autorisés par des underscores
         filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-        # Limiter la longueur
+        # Limiter la longueur à 200 caractères
         if len(filename) > 200:
             name, ext = os.path.splitext(filename)
             filename = name[:200-len(ext)] + ext
@@ -130,7 +131,7 @@ class FileHandler:
     
     @staticmethod
     def open_file(filepath: str) -> bool:
-        """Ouvrir un fichier avec l'application par défaut"""
+        """Ouvrir un fichier avec l'application par défaut du système"""
         try:
             import platform
             import subprocess
@@ -139,11 +140,13 @@ class FileHandler:
                 print(f"❌ Le fichier n'existe pas: {filepath}")
                 return False
             
-            if platform.system() == 'Windows':
+            system = platform.system()
+            
+            if system == 'Windows':
                 os.startfile(filepath)
-            elif platform.system() == 'Darwin':  # macOS
+            elif system == 'Darwin':  # macOS
                 subprocess.call(['open', filepath])
-            else:  # Linux
+            else:  # Linux et autres Unix
                 subprocess.call(['xdg-open', filepath])
             
             print(f"✅ Fichier ouvert: {filepath}")
@@ -154,16 +157,56 @@ class FileHandler:
     
     @staticmethod
     def get_file_icon(extension: str) -> str:
-        """Récupérer l'icône correspondant à l'extension"""
+        """
+        Récupérer l'emoji icône correspondant à l'extension du fichier
+        
+        Args:
+            extension: Extension du fichier (sans le point)
+        
+        Returns:
+            str: Emoji représentant le type de fichier
+        """
+        # Dictionnaire des icônes par extension
         icons = {
+            # Documents
             'pdf': '📄',
-            'doc': '📝', 'docx': '📝',
-            'xls': '📊', 'xlsx': '📊',
-            'ppt': '📽️', 'pptx': '📽️',
-            'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'bmp': '🖼️',
+            'doc': '📝', 'docx': '📝', 'odt': '📝',
+            'txt': '📃', 'rtf': '📃',
+            
+            # Tableurs
+            'xls': '📊', 'xlsx': '📊', 'ods': '📊', 'csv': '📊',
+            
+            # Présentations
+            'ppt': '📽️', 'pptx': '📽️', 'odp': '📽️',
+            
+            # Images
+            'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 
+            'gif': '🖼️', 'bmp': '🖼️', 'svg': '🖼️',
+            'ico': '🖼️', 'webp': '🖼️',
+            
+            # Archives
             'zip': '🗜️', 'rar': '🗜️', '7z': '🗜️',
-            'txt': '📃', 'csv': '📃',
-            'mp3': '🎵', 'wav': '🎵',
+            'tar': '🗜️', 'gz': '🗜️', 'bz2': '🗜️',
+            
+            # Audio
+            'mp3': '🎵', 'wav': '🎵', 'ogg': '🎵',
+            'flac': '🎵', 'aac': '🎵', 'm4a': '🎵',
+            
+            # Vidéo
             'mp4': '🎬', 'avi': '🎬', 'mov': '🎬',
+            'mkv': '🎬', 'flv': '🎬', 'wmv': '🎬',
+            'webm': '🎬',
+            
+            # Code
+            'py': '🐍', 'js': '💛', 'html': '🌐',
+            'css': '🎨', 'java': '☕', 'cpp': '⚙️',
+            'c': '⚙️', 'php': '🐘', 'rb': '💎',
+            'go': '🔷', 'rs': '🦀', 'ts': '🔷',
+            
+            # Autres
+            'json': '📋', 'xml': '📋', 'yaml': '📋',
+            'md': '📝', 'log': '📋',
         }
+        
+        # Retourner l'icône correspondante ou une icône par défaut
         return icons.get(extension.lower(), '📄')
