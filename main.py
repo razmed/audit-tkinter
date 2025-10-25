@@ -3,20 +3,30 @@
 
 """
 Application Portail Document - SNTP
-Application desktop de gestion de documents
+Application desktop de gestion de documents avec Drag & Drop
 
 Auteur: Portail Document Team
-Version: 1.0.0
+Version: 2.0.0
 """
 
-import tkinter as tk
-from tkinter import messagebox
 import sys
 import os
 
 # Ajouter le répertoire parent au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# IMPORTANT: Importer TkinterDnD AVANT tk
+try:
+    from tkinterdnd2 import TkinterDnD
+    DRAG_DROP_AVAILABLE = True
+    print("✅ Module tkinterdnd2 chargé - Drag & Drop activé")
+except ImportError:
+    import tkinter as tk
+    DRAG_DROP_AVAILABLE = False
+    print("⚠️ Module tkinterdnd2 non trouvé - Drag & Drop désactivé")
+    print("   Pour activer le Drag & Drop, installez: pip install tkinterdnd2")
+
+from tkinter import messagebox
 from database import Database
 from utils.file_handler import FileHandler
 from ui.main_window import MainWindow
@@ -26,7 +36,15 @@ class PortalApplication:
     """Application principale du Portail Document"""
     
     def __init__(self):
-        self.root = tk.Tk()
+        # Créer la fenêtre principale avec support Drag & Drop si disponible
+        if DRAG_DROP_AVAILABLE:
+            self.root = TkinterDnD.Tk()
+            print("✅ Fenêtre TkinterDnD créée")
+        else:
+            import tkinter as tk
+            self.root = tk.Tk()
+            print("⚠️ Fenêtre Tk standard créée (pas de Drag & Drop)")
+        
         self.db = None
         self.file_handler = None
         
@@ -92,6 +110,7 @@ def main():
     print("=" * 60)
     print("  PORTAIL DOCUMENT - SNTP")
     print("  Application Desktop de Gestion de Documents")
+    print("  Version 2.0 - Avec Drag & Drop")
     print("=" * 60)
     print()
     
